@@ -516,7 +516,12 @@ CAAT.Module({
 
                 this.canvas.width = this.referenceWidth * factor;
                 this.canvas.height = this.referenceHeight * factor;
-                this.ctx = this.canvas.getContext(this.glEnabled ? 'experimental-webgl' : '2d');
+                if (this.glEnabled) {
+                    this.ctx = this.canvas.getContext('webgl') || this.canvas.getContext('experimental-webgl');
+                }
+                else {
+                    this.ctx = this.canvas.getContext('2d');
+                }
 
                 this.__setupRetina();
 
@@ -620,7 +625,12 @@ CAAT.Module({
                     this.canvas.height = h;
                 }
 
-                this.ctx = this.canvas.getContext(this.glEnabled ? 'experimental-webgl' : '2d');
+                if (this.gl) {
+                    this.ctx = this.canvas.getContext('webgl') || this.canvas.getContext('experimental-webgl');
+                }
+                else {
+                    this.ctx = this.canvas.getContext('2d');
+                }
 
                 this.__setupRetina();
 
@@ -718,7 +728,7 @@ CAAT.Module({
                 var i;
 
                 try {
-                    this.gl = canvas.getContext("experimental-webgl"/*, {antialias: false}*/);
+                    this.gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
                     this.gl.viewportWidth = width;
                     this.gl.viewportHeight = height;
                     CAAT.GLRENDER = true;
@@ -759,6 +769,7 @@ CAAT.Module({
                     this.checkDebug();
                 } else {
                     // fallback to non gl enabled canvas.
+                    CAAT.log("WebGL not supported, falling back to 2D canvas.")
                     return this.initialize(width, height, canvas);
                 }
 
@@ -1443,7 +1454,7 @@ CAAT.Module({
                 var ssin = this.scenes[ inSceneIndex ];
                 var sout = this.scenes[ outSceneIndex ];
 
-                if (!CAAT.__CSS__ && CAAT.CACHE_SCENE_ON_CHANGE) {
+                if (!CAAT.__CSS__ && !this.glEnabled && CAAT.CACHE_SCENE_ON_CHANGE) {
                     this.renderToContext(this.transitionScene.ctx, sout);
                     sout = this.transitionScene;
                 }
@@ -2055,7 +2066,7 @@ CAAT.Module({
                 }
                 this.modelViewMatrixI.transformCoord(pt);
                 posx = pt.x;
-                posy = pt.y
+                posy = pt.y;
 
                 point.set(posx, posy);
                 this.screenMousePoint.set(posx, posy);
@@ -2108,7 +2119,7 @@ CAAT.Module({
                     pos = lactor.viewToModel(
                         new CAAT.Math.Point(this.screenMousePoint.x, this.screenMousePoint.y, 0));
                     if (lactor.actionPerformed && lactor.contains(pos.x, pos.y)) {
-                        lactor.actionPerformed(e)
+                        lactor.actionPerformed(e);
                     }
 
                     lactor.mouseUp(
@@ -2358,7 +2369,6 @@ CAAT.Module({
 
             __mouseDBLClickHandler:function (e) {
 
-                this.getCanvasCoord(this.mousePoint, e);
                 if (null !== this.lastSelectedActor) {
                     /*
                      var pos = this.lastSelectedActor.viewToModel(
@@ -2366,8 +2376,22 @@ CAAT.Module({
                      */
                     this.lastSelectedActor.mouseDblClick(
                         new CAAT.Event.MouseEvent().init(
-                            this.mousePoint.x,
-                            this.mousePoint.y,
+                            this.prevMousePoint.x,
+                            this.prevMousePoint.y,
+                            e,
+                            this.lastSelectedActor,
+                            this.screenMousePoint,
+                            this.currentScene.time));
+                }
+            },
+
+            __mouseWheelHandler:function (e) {
+
+                if (null !== this.lastSelectedActor) {
+                    this.lastSelectedActor.mouseWheel(
+                        new CAAT.Event.MouseEvent().init(
+                            this.prevMousePoint.x,
+                            this.prevMousePoint.y,
                             e,
                             this.lastSelectedActor,
                             this.screenMousePoint,
@@ -2841,6 +2865,27 @@ CAAT.Module({
                         me.__mouseDBLClickHandler(e);
                     }
                 }, false);
+
+                var mouseWheelHandler = function (e) {
+                    if (e.target === canvas) {
+                        e.preventDefault();
+                        e.cancelBubble = true;
+                        if (e.stopPropagation) e.stopPropagation();
+                        var mp = me.mousePoint;
+                        me.getCanvasCoord(mp, e);
+                        if (mp.x < 0 || mp.y < 0 || mp.x >= me.width || mp.y >= me.height) {
+                            return;
+                        }
+
+                        //Cross browser wheel delta
+                        e.wheelDelta = Math.max(-1, Math.min(1, (e.wheelDelta || -e.detail)));
+                        me.__mouseWheelHandler(e);
+                    }
+                };
+                //IE9, Chrome, Safari, Opera
+                window.addEventListener('mousewheel', mouseWheelHandler, false);
+                //Firefox
+                window.addEventListener('DOMMouseScroll', mouseWheelHandler, false);
 
                 if (CAAT.TOUCH_BEHAVIOR === CAAT.TOUCH_AS_MOUSE) {
                     canvas.addEventListener("touchstart", this.__touchStartHandler.bind(this), false);
